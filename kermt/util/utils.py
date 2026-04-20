@@ -79,7 +79,7 @@ def get_model_args():
             'embedding_output_type', 'self_attention', 'attn_hidden', 'dense',
             'bond_drop_rate', 'distinct_init', 'aug_rate', 'nencoders',
             'dist_coff', 'no_attach_fea', 'coord', "num_attn_head", "num_mt_block",
-            'num_tasks',  # Required for prediction on blinded data (no target columns)
+            'regression_loss',
             ]
 
 def get_finetune_predict_consistency_args():
@@ -711,7 +711,8 @@ def load_checkpoint(path: str,
                     current_args: Namespace = None,
                     cuda: bool = None,
                     logger: logging.Logger = None,
-                    strict_shape_check: bool = True):
+                    strict_shape_check: bool = True,
+                    reload_with_current_args_only: bool = False):
     """
     Loads a model checkpoint.
 
@@ -720,7 +721,9 @@ def load_checkpoint(path: str,
     :param cuda: Whether to move model to cuda.
     :param logger: A logger.
     :param strict_shape_check: Whether to check if the shape of the loaded model parameters matches the shape of the model parameters.
-    :return: The loaded MPNN and loaded checkpoint state.
+    :param reload_with_current_args_only: If True and current_args is set, build from current_args only (do not
+        overwrite with model-related fields from the checkpoint Namespace). For finetune test reload.
+    :return: The loaded MPNN.
     """
     debug = logger.debug if logger is not None else print
 
@@ -732,7 +735,10 @@ def load_checkpoint(path: str,
     loaded_state_dict = OrderedDict([(k.replace("grover", "kermt"), v) for k, v in loaded_state_dict.items()])
     model_ralated_args = get_model_args()
 
-    if current_args is not None:
+    if reload_with_current_args_only:
+        if current_args is None:
+            raise ValueError("reload_with_current_args_only requires current_args")
+    elif current_args is not None:
         for key, value in vars(args).items():
             if key in model_ralated_args:
                 setattr(current_args, key, value)

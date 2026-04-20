@@ -1,0 +1,55 @@
+# ============================================================
+#  与 with_features_v1_dirty_finetune5ep_datav2_ep200_es50_bs128 数据与超参对齐，
+#  但从 Grover 预训练权重 **pretrained_models/grover_base.pt** 起步（不从本地已微调 checkpoint 续训）。
+#  相对原 run：bond_drop_rate=0（可与 no_cache:false 配合用缓存）、dropout=0.1。
+#  数据：data_v2_cleaned 扁平 CSV + npz（同 sequences_to_plan_a_csv_features 导出）。
+# ============================================================
+
+data_path:          tlc/data/data_v2_cleaned/train.csv
+separate_val_path:  tlc/data/data_v2_cleaned/valid.csv
+separate_test_path: tlc/data/data_v2_cleaned/test.csv
+checkpoint_path:    pretrained_models/grover_base.pt
+save_dir:           tlc/results/with_features_grover_scratch_datav2_ep200_es50_bs128
+
+features_path:
+  - tlc/data/data_v2_cleaned/train_features.npz
+separate_val_features_path:
+  - tlc/data/data_v2_cleaned/valid_features.npz
+separate_test_features_path:
+  - tlc/data/data_v2_cleaned/test_features.npz
+
+dataset_type:   regression
+metric:         mae
+split_type:     scaffold_balanced
+num_folds:      1
+ensemble_size:  1
+seed:           42
+
+epochs:         200
+batch_size:     128
+max_lr:         1.0e-4
+init_lr:        1.0e-4
+final_lr:       2.0e-5
+warmup_epochs:  20.0
+weight_decay:   0.0
+dropout:        0.1
+early_stop_epoch: 50
+
+solvent_emb_dim:  0
+
+ffn_hidden_size:  700
+ffn_num_layers:   3
+activation:       PReLU
+
+self_attention: true
+attn_hidden:    4
+attn_out:       128
+dist_coff:      0.15
+
+bond_drop_rate: 0.0
+no_features_scaling: true
+
+no_cuda: false
+gpu:     0
+
+no_cache: false

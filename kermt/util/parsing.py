@@ -156,6 +156,9 @@ def add_finetune_args(parser: ArgumentParser):
                         choices=['classification', 'regression'], default='classification',
                         help='Type of dataset, e.g. classification or regression.'
                              'This determines the loss function used during training.')
+    parser.add_argument('--regression_loss', type=str, default='mse',
+                        choices=['mse', 'beta_nll'],
+                        help='Regression only: mse (default) or beta_nll (Beta NLL; raw targets in (0,1), no target scaling).')
     parser.add_argument('--separate_val_path', type=str,
                         help='Path to separate val set, optional')
     parser.add_argument('--separate_val_features_path', type=str, nargs='*',
@@ -469,6 +472,12 @@ def modify_train_args(args: Namespace):
     assert args.data_path is not None
     assert args.dataset_type is not None
 
+    rl = getattr(args, 'regression_loss', 'mse')
+    if rl not in ('mse', 'beta_nll'):
+        raise ValueError(f'regression_loss must be mse or beta_nll, got {rl!r}')
+    if args.dataset_type != 'regression' and rl == 'beta_nll':
+        raise ValueError('regression_loss beta_nll requires dataset_type regression')
+
     if args.save_dir is not None:
         makedirs(args.save_dir)
     else:
@@ -519,6 +528,21 @@ def modify_train_args(args: Namespace):
 
     if args.bond_drop_rate > 0:
         args.no_cache = True
+
+    _FINETUNE_MODEL_DEFAULTS = {
+        'hidden_size': 300,
+        'depth': 6,
+        'num_mt_block': 1,
+        'num_attn_head': 4,
+        'bias': False,
+        'backbone': 'gtrans',
+        'undirected': False,
+        'dense': False,
+        'embedding_output_type': 'atom',
+    }
+    for k, v in _FINETUNE_MODEL_DEFAULTS.items():
+        if not hasattr(args, k):
+            setattr(args, k, v)
 
     setattr(args, 'fingerprint', False)
 

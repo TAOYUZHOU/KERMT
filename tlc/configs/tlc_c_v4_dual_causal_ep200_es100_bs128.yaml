@@ -1,0 +1,30 @@
+# 方案 C v4：双因果解码（前向 + 反向）+ ensemble，无步间 relu 正则；
+# 训练 teacher forcing；验证/测试用 predict_sequence 自回归。
+# 数据：data_v2_cleaned。
+# 训练：python tlc/scripts/train_c_v3_v4.py --config tlc/configs/tlc_c_v4_dual_causal_ep200_es100_bs128.yaml
+
+plan:        v4
+checkpoint:  pretrained_models/grover_base.pt
+train_seq:   tlc/data/data_v2_cleaned/train_sequences.json
+val_seq:     tlc/data/data_v2_cleaned/valid_sequences.json
+test_seq:    tlc/data/data_v2_cleaned/test_sequences.json
+save_dir:    tlc/results/c_v4_dual_causal_datav2_ep200_es100_bs128
+
+epochs:           200
+batch_size:       128
+lr:               1.0e-4
+encoder_lr:       1.0e-5
+weight_decay:     1.0e-5
+seed:             42
+early_stop_epoch: 100
+
+freeze_encoder:   false
+
+n_solvents:       5
+desc_dim:         6
+mlp_hidden:       512
+mlp_blocks:       3
+dropout:          0.1
+
+regression_loss:  mae
+branch_aux_weight: 0.25

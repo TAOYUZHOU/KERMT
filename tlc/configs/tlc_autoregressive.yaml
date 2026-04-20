@@ -1,0 +1,37 @@
+# ============================================================
+#  方案 B: 自回归单调 Rf 预测
+#  Beta 回归 + SolventMLP 融合 + 体系内单调约束
+#  用法:  python tlc/scripts/train_autoregressive.py --config tlc/configs/tlc_autoregressive.yaml
+#         CUDA_VISIBLE_DEVICES=1 python -u tlc/scripts/train_autoregressive.py \
+#             --config tlc/configs/tlc_autoregressive.yaml --epochs 50
+# ============================================================
+
+# --- 路径 ---
+checkpoint:     pretrained_models/grover_base.pt
+train_seq:      tlc/data/train_sequences.json
+val_seq:        tlc/data/valid_sequences.json
+test_seq:       tlc/data/test_sequences.json
+save_dir:       tlc/results/autoregressive_v3_solv_gnn
+
+# --- 训练超参 ---
+epochs:         200
+batch_size:     64
+lr:             1.0e-4
+encoder_lr:     1.0e-5
+weight_decay:   1.0e-5
+seed:           42
+early_stop_epoch: 20
+
+# --- Encoder ---
+freeze_encoder: false
+
+# --- 自回归 ---
+teacher_forcing: 1.0
+
+# --- 模型结构 ---
+n_solvents:     5
+desc_dim:       6
+desc_emb_dim:   64
+ffn_hidden:     512
+ffn_blocks:     3
+dropout:        0.1

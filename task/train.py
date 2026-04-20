@@ -100,6 +100,12 @@ def train(epoch, model, data, loss_func, optimizer, scheduler,
         mol_loader = DataLoader(data, batch_size=args.batch_size, shuffle=True,
                             num_workers=num_workers, collate_fn=mol_collator)
 
+    n_batches = len(mol_loader)
+    start_msg = f'Epoch {epoch}: start training ({n_batches} batches, batch_size={args.batch_size})'
+    if logger is not None:
+        logger.info(start_msg)
+    print(start_msg, flush=True)
+
     for _, item in enumerate(mol_loader):
         _, batch, features_batch, mask, targets = item
         if next(model.parameters()).is_cuda:
@@ -120,6 +126,12 @@ def train(epoch, model, data, loss_func, optimizer, scheduler,
 
         cum_loss_sum += loss.item()
         cum_iter_count += 1
+
+        if cum_iter_count == 1 or cum_iter_count % 50 == 0:
+            prog = f'Epoch {epoch}: batch {cum_iter_count}/{n_batches}'
+            if logger is not None:
+                logger.info(prog)
+            print(prog, flush=True)
 
         loss.backward()
         optimizer.step()
@@ -187,7 +199,16 @@ def run_training(args: Namespace, logger: Logger = None, return_val=False) -> Li
             else:
                 cur_model = model_idx
             debug(f'Loading model {cur_model} from {args.checkpoint_paths[cur_model]}')
-            model, loaded_ckpt_state = load_checkpoint(args.checkpoint_paths[cur_model], current_args=args, logger=logger)
+            strict_ckpt = not (
+                getattr(args, 'regression_loss', 'mse') == 'beta_nll'
+                and args.checkpoint_paths is not None
+            )
+            model = load_checkpoint(
+                args.checkpoint_paths[cur_model],
+                current_args=args,
+                logger=logger,
+                strict_shape_check=strict_ckpt,
+            )
         else:
             debug(f'Building model {model_idx}')
             model = build_model(model_idx=model_idx, args=args)
@@ -251,7 +272,14 @@ def run_training(args: Namespace, logger: Logger = None, return_val=False) -> Li
         best_score = float('inf') if args.minimize_score else -float('inf')
         best_epoch, n_iter = 0, 0
         min_val_loss = float('inf')
-        for epoch in range(start_epoch, args.epochs):
+        n_train_batches = len(train_data)
+        for epoch in range(args.epochs):
+            ep_msg = (
+                f'Fold {model_idx} epoch {epoch}/{args.epochs - 1}: '
+                f'about to run train+val (~{n_train_batches} train batches per epoch)'
+            )
+            info(ep_msg)
+            print(ep_msg, flush=True)
             s_time = time.time()
             n_iter, train_loss = train(
                 epoch=epoch,
@@ -298,17 +326,19 @@ def run_training(args: Namespace, logger: Logger = None, return_val=False) -> Li
                   'cur_lr: {:.5f}'.format(scheduler.get_lr()[-1]),
                   't_time: {:.4f}s'.format(t_time),
                   'v_time: {:.4f}s'.format(v_time),
-                  flush=True)
+                  flush=True,
+                  )
 
             if args.tensorboard:
                 writer.add_scalar('loss/train', train_loss, epoch)
                 writer.add_scalar('loss/val', val_loss, epoch)
                 writer.add_scalar(f'{args.metric}_val', avg_val_score, epoch)
 
-            # Always update min_val_loss as it is needed for HPO
             if val_loss < min_val_loss:
+                min_val_loss = val_loss
                 curr_epoch_best_by_loss = True
-                min_val_loss, best_epoch = val_loss, epoch
+                if args.select_by_loss:
+                    best_epoch = epoch
             else:
                 curr_epoch_best_by_loss = False
 
@@ -335,7 +365,13 @@ def run_training(args: Namespace, logger: Logger = None, return_val=False) -> Li
             info(f'Model {model_idx} best val loss = {min_val_loss:.6f} on epoch {best_epoch}')
         else:
             info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
-        model, _ = load_checkpoint(os.path.join(save_dir, 'model.pt'), cuda=args.cuda, logger=logger)
+        model = load_checkpoint(
+            os.path.join(save_dir, 'model.pt'),
+            current_args=args,
+            cuda=args.cuda,
+            logger=logger,
+            reload_with_current_args_only=True,
+        )
 
         test_preds, _ = predict(
             model=model,
@@ -478,15 +514,19 @@ def load_data(args, debug, logger):
 
     # Initialize scaler and scale training targets by subtracting mean and dividing standard deviation (regression only)
     if args.dataset_type == 'regression':
-        debug('Fitting scaler')
-        _, train_targets = train_data.smiles(), train_data.targets()
-        scaler = StandardScaler().fit(train_targets)
-        scaled_targets = scaler.transform(train_targets).tolist()
-        train_data.set_targets(scaled_targets)
+        if getattr(args, 'regression_loss', 'mse') == 'beta_nll':
+            debug('Beta NLL: skipping target standardization (train/val targets stay in original scale, expected in (0,1))')
+            scaler = None
+        else:
+            debug('Fitting scaler')
+            _, train_targets = train_data.smiles(), train_data.targets()
+            scaler = StandardScaler().fit(train_targets)
+            scaled_targets = scaler.transform(train_targets).tolist()
+            train_data.set_targets(scaled_targets)
 
-        val_targets = val_data.targets()
-        scaled_val_targets = scaler.transform(val_targets).tolist()
-        val_data.set_targets(scaled_val_targets)
+            val_targets = val_data.targets()
+            scaled_val_targets = scaler.transform(val_targets).tolist()
+            val_data.set_targets(scaled_val_targets)
     else:
         scaler = None
     return features_scaler, scaler, shared_dict, test_data, train_data, val_data

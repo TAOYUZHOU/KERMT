@@ -42,12 +42,84 @@ from typing import List, Dict, Callable
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch import nn as nn
 from torch.cuda import nvtx
 
 from kermt.data import get_atom_fdim, get_bond_fdim
 from kermt.model.layers import Readout, GTransEncoder
 from kermt.util.nn_utils import get_activation_function
+
+
+SOLVENT_SMILES = ["CCCCCC", "CCOC(C)=O", "ClCCl", "CO", "CCOCC"]  # H, EA, DCM, MeOH, Et2O
+
+
+def _parse_beta_raw(raw: torch.Tensor, num_tasks: int):
+    """Map FFN raw outputs [B, 2 * num_tasks] to Beta(μ, φ) parameters per task."""
+    b = raw.shape[0]
+    r = raw.view(b, num_tasks, 2)
+    mu = torch.sigmoid(r[..., 0])
+    phi = F.softplus(r[..., 1]) + 2.0
+    return mu, phi
+
+
+def _beta_nll_neglogprob(mu: torch.Tensor, phi: torch.Tensor, target: torch.Tensor, eps: float = 1e-6):
+    """Negative log-likelihood of Beta(μ, φ) at `target` (same shape as mu)."""
+    t = target.clamp(eps, 1.0 - eps)
+    alpha = mu * phi
+    beta = (1.0 - mu) * phi
+    log_prob = (
+        torch.lgamma(alpha + beta)
+        - torch.lgamma(alpha)
+        - torch.lgamma(beta)
+        + (alpha - 1.0) * torch.log(t)
+        + (beta - 1.0) * torch.log(1.0 - t)
+    )
+    return -log_prob
+
+
+class _ResBlock(nn.Module):
+    """Residual block with pre-LayerNorm."""
+
+    def __init__(self, dim, dropout=0.1):
+        super().__init__()
+        self.fc1 = nn.Linear(dim, dim)
+        self.fc2 = nn.Linear(dim, dim)
+        self.norm = nn.LayerNorm(dim)
+        self.act = nn.GELU()
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x):
+        return self.norm(x + self.drop(self.fc2(self.act(self.fc1(x)))))
+
+
+class SolventProjection(nn.Module):
+    """Project 5 ratio-scaled GNN solvent embeddings to mol_dim.
+
+    Each solvent SMILES is encoded by the shared KERMT encoder.
+    The resulting vectors are scaled by their ratios, concatenated [5*mol_dim],
+    then projected to [mol_dim] through a 3-layer residual MLP.
+    """
+
+    def __init__(self, mol_dim, n_solvents=5, n_blocks=3, dropout=0.1):
+        super().__init__()
+        self.proj_in = nn.Linear(n_solvents * mol_dim, mol_dim)
+        self.blocks = nn.ModuleList([
+            _ResBlock(mol_dim, dropout) for _ in range(n_blocks)
+        ])
+
+    def forward(self, solvent_vecs, ratios):
+        """
+        solvent_vecs: [n_solvents, mol_dim]  (GNN-encoded, shared encoder)
+        ratios:       [B, n_solvents]
+        returns:      [B, mol_dim]
+        """
+        scaled = ratios.unsqueeze(-1) * solvent_vecs.unsqueeze(0)  # [B, 5, mol_dim]
+        x = scaled.reshape(scaled.size(0), -1)                     # [B, 5*mol_dim]
+        x = torch.nn.functional.gelu(self.proj_in(x))              # [B, mol_dim]
+        for block in self.blocks:
+            x = block(x)
+        return x
 
 
 class KERMTEmbedding(nn.Module):
@@ -430,8 +502,34 @@ class KermtFinetuneTask(nn.Module):
         else:
             self.readout = Readout(rtype="mean", hidden_size=self.hidden_size)
 
+        self.use_solvent_enc = getattr(args, 'solvent_emb_dim', 0) > 0
+        self.n_solvent_dims = getattr(args, 'n_solvent_dims', 5)
+        self.n_cross_dims = getattr(args, 'n_cross_dims', 10)
+        if self.use_solvent_enc:
+            if args.self_attention:
+                mol_dim = args.hidden_size * args.attn_out
+            else:
+                mol_dim = args.hidden_size
+            self._mol_dim = mol_dim
+            self._build_solvent_graph(args)
+            self.solvent_proj = SolventProjection(mol_dim, self.n_solvent_dims)
+            raw_npz_w = getattr(args, "_tlc_raw_npz_features_size", None)
+            if raw_npz_w is None:
+                raw_npz_w = args.features_size
+                setattr(args, "_tlc_raw_npz_features_size", int(raw_npz_w))
+            n_desc_dims = raw_npz_w - self.n_solvent_dims - self.n_cross_dims
+            args.features_size = mol_dim + n_desc_dims
+
+        self.use_beta_regression = (
+            args.dataset_type == "regression"
+            and getattr(args, "regression_loss", "mse") == "beta_nll"
+        )
+        _saved_out = args.output_size
+        if self.use_beta_regression:
+            args.output_size = _saved_out * 2
         self.mol_atom_from_atom_ffn = self.create_ffn(args)
         self.mol_atom_from_bond_ffn = self.create_ffn(args)
+        args.output_size = _saved_out
         #self.ffn = nn.ModuleList()
         #self.ffn.append(self.mol_atom_from_atom_ffn)
         #self.ffn.append(self.mol_atom_from_bond_ffn)
@@ -493,14 +591,22 @@ class KermtFinetuneTask(nn.Module):
 
     @staticmethod
     def get_loss_func(args):
+        use_beta = (
+            args.dataset_type == "regression"
+            and getattr(args, "regression_loss", "mse") == "beta_nll"
+        )
+        num_tasks = getattr(args, "num_tasks", 1)
+
         def loss_func(preds, targets,
                       dt=args.dataset_type,
                       dist_coff=args.dist_coff):
 
             if dt == 'classification':
                 pred_loss = nn.BCEWithLogitsLoss(reduction='none')
-            elif dt == 'regression':
+            elif dt == 'regression' and not use_beta:
                 pred_loss = nn.MSELoss(reduction='none')
+            elif dt == 'regression' and use_beta:
+                pred_loss = None
             else:
                 raise ValueError(f'Dataset type "{args.dataset_type}" not supported.')
 
@@ -508,13 +614,20 @@ class KermtFinetuneTask(nn.Module):
             # TODO: Here, should we need to involve the model status? Using len(preds) is just a hack.
             if type(preds) is not tuple:
                 # in eval mode.
+                if use_beta:
+                    return nn.MSELoss(reduction='none')(preds, targets)
                 return pred_loss(preds, targets)
 
             # in train mode.
-            dist_loss = nn.MSELoss(reduction='none')
-            # dist_loss = nn.CosineSimilarity(dim=0)
-            # print(pred_loss)
+            if use_beta:
+                mu_a, phi_a = _parse_beta_raw(preds[0], num_tasks)
+                mu_b, phi_b = _parse_beta_raw(preds[1], num_tasks)
+                nll_a = _beta_nll_neglogprob(mu_a, phi_a, targets)
+                nll_b = _beta_nll_neglogprob(mu_b, phi_b, targets)
+                dist = (mu_a - mu_b) ** 2
+                return nll_a + nll_b + dist_coff * dist
 
+            dist_loss = nn.MSELoss(reduction='none')
             dist = dist_loss(preds[0], preds[1])
             pred_loss1 = pred_loss(preds[0], targets)
             pred_loss2 = pred_loss(preds[1], targets)
@@ -522,24 +635,57 @@ class KermtFinetuneTask(nn.Module):
 
         return loss_func
 
+    def _build_solvent_graph(self, args):
+        """Pre-build molecular graphs for 5 solvents (stored on CPU)."""
+        from kermt.data.molgraph import mol2graph
+        bg = mol2graph(SOLVENT_SMILES, {}, args)
+        self._solvent_graph_cpu = bg.get_components()
+
+    def _encode_solvents(self):
+        """Encode 5 solvent SMILES through the shared KERMT encoder → [5, mol_dim]."""
+        device = next(self.parameters()).device
+        graph = tuple(
+            c.to(device) if isinstance(c, torch.Tensor) else c
+            for c in self._solvent_graph_cpu
+        )
+        output = self.kermt(graph)
+        _, _, _, _, _, a_scope, _, _ = graph
+        v_atom = self.readout(output["atom_from_atom"], a_scope)
+        v_bond = self.readout(output["atom_from_bond"], a_scope)
+        if isinstance(v_atom, tuple):
+            v_atom = v_atom[0].flatten(start_dim=1)
+            v_bond = v_bond[0].flatten(start_dim=1)
+        return (v_atom + v_bond) / 2.0
+
+    def _process_features(self, features_batch, ref_tensor):
+        """Convert raw numpy features to tensor; if GNN solvent encoding is on,
+        replace raw solvent ratios with projected GNN embeddings."""
+        if features_batch[0] is None:
+            return None
+        features_batch = torch.from_numpy(np.stack(features_batch)).float()
+        if self.iscuda:
+            features_batch = features_batch.cuda()
+        features_batch = features_batch.to(ref_tensor)
+        if len(features_batch.shape) == 1:
+            features_batch = features_batch.view([1, features_batch.shape[0]])
+
+        if self.use_solvent_enc:
+            ratios = features_batch[:, :self.n_solvent_dims]
+            desc = features_batch[:, self.n_solvent_dims + self.n_cross_dims:]
+            solvent_vecs = self._encode_solvents()                # [5, mol_dim]
+            solv_proj = self.solvent_proj(solvent_vecs, ratios)   # [B, mol_dim]
+            features_batch = torch.cat([solv_proj, desc], dim=1)  # [B, mol_dim+6]
+
+        return features_batch
+
     def forward(self, batch, features_batch):
         _, _, _, _, _, a_scope, _, _ = batch
 
         output = self.kermt(batch)
-        # Share readout
         mol_atom_from_bond_output = self.readout(output["atom_from_bond"], a_scope)
         mol_atom_from_atom_output = self.readout(output["atom_from_atom"], a_scope)
 
-        if features_batch[0] is not None:
-            features_batch = torch.from_numpy(np.stack(features_batch)).float()
-            if self.iscuda:
-                features_batch = features_batch.cuda()
-            features_batch = features_batch.to(output["atom_from_atom"])
-            if len(features_batch.shape) == 1:
-                features_batch = features_batch.view([1, features_batch.shape[0]])
-        else:
-            features_batch = None
-
+        features_batch = self._process_features(features_batch, output["atom_from_atom"])
 
         if features_batch is not None:
             mol_atom_from_atom_output = torch.cat([mol_atom_from_atom_output, features_batch], 1)
@@ -555,6 +701,13 @@ class KermtFinetuneTask(nn.Module):
             if self.classification:
                 atom_ffn_output = self.sigmoid(atom_ffn_output)
                 bond_ffn_output = self.sigmoid(bond_ffn_output)
-            output = (atom_ffn_output + bond_ffn_output) / 2
+                output = (atom_ffn_output + bond_ffn_output) / 2
+            elif self.use_beta_regression:
+                nt = atom_ffn_output.shape[1] // 2
+                mu_a, _ = _parse_beta_raw(atom_ffn_output, nt)
+                mu_b, _ = _parse_beta_raw(bond_ffn_output, nt)
+                output = (mu_a + mu_b) / 2.0
+            else:
+                output = (atom_ffn_output + bond_ffn_output) / 2
 
         return output

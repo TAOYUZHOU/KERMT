@@ -1,0 +1,26 @@
+data:
+  test_excel_path: "data/medisilion_pe_ea.xlsx"
+  columns:
+    smiles: "SMILES"
+    id: "分子编号"
+
+model:
+  model_type: "KERMT_PLAN_C_BIDIR"
+  kermt_root: "/root/autodl-tmp/taoyuzhou/KERMT"
+  kermt_bidir_save_dir: "tlc/results/bidirectional_c_v2_mse_ep200_bs128"
+  kermt_min_std: 0.02
+
+optimization:
+  solvent_system: "H,EA"
+  target_range: [0.4, 0.6]
+  acceptance_range: [0.4, 0.6]
+  initial_strategy: "model"
+  initial_ratio: "3:1"
+  max_steps: 5
+  ea_bins: 20
+  kernel_type: "RBF"
+  length_scale: 0.5
+  noise_level: 0.001
+
+output:
+  result_json: "optimization_results_kermt_plan_c_bidir_v2_mse_medisilion_pe_ea.json"

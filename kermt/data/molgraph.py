@@ -48,13 +48,20 @@ from rdkit import Chem
 
 from rdkit import RDLogger
 RDLogger.DisableLog('rdApp.*')
-import cuik_molmaker
 import torch
-from cuik_molmaker.mol_features import MoleculeFeaturizer
 from descriptastorus.descriptors import rdDescriptors, rdNormalizedDescriptors
 from kermt.util.features import FeatureRange, get_feature_range
 
-import cuik_molmaker
+# --- Lazy cuik_molmaker import (patched by smoke_test.sh) ---
+try:
+    from cuik_molmaker.mol_features import MoleculeFeaturizer
+    import cuik_molmaker
+    _CUIK_AVAILABLE = True
+except ImportError:
+    _CUIK_AVAILABLE = False
+# --- End lazy import ---
+
+
 
 # Atom feature sizes
 MAX_ATOMIC_NUM = 100

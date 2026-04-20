@@ -16,7 +16,15 @@ from kermt.data.moldataset import MoleculeDatapoint
 from kermt.data.task_labels import atom_to_vocab, bond_to_vocab
 from kermt.util.features import FeatureRange, get_feature_range
 
-import cuik_molmaker
+# --- Lazy cuik_molmaker import (patched by smoke_test.sh) ---
+try:
+    import cuik_molmaker
+    _CUIK_AVAILABLE = True
+except ImportError:
+    _CUIK_AVAILABLE = False
+# --- End lazy import ---
+
+
 
 def get_data(data_path, logger=None):
     """

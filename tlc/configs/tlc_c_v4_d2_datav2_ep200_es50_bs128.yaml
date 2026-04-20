@@ -1,0 +1,35 @@
+# C v4 D2：因果 Transformer 双塔（KermtCv4D2Transformer）
+# bond_drop_rate 作用于 GNN encoder；dropout 作用于 Transformer/投影等
+
+plan: v4_d2
+checkpoint: pretrained_models/grover_base.pt
+train_seq: tlc/data/data_v2_cleaned/train_sequences.json
+val_seq: tlc/data/data_v2_cleaned/valid_sequences.json
+test_seq: tlc/data/data_v2_cleaned/test_sequences.json
+save_dir: tlc/results/c_v4_d2_datav2_ep200_es50_bs128
+
+epochs: 200
+batch_size: 128
+lr: 1.0e-4
+encoder_lr: 1.0e-5
+weight_decay: 1.0e-5
+seed: 42
+early_stop_epoch: 50
+
+freeze_encoder: false
+
+n_solvents: 5
+desc_dim: 6
+mlp_hidden: 512
+mlp_blocks: 3
+dropout: 0.1
+bond_drop_rate: 0.1
+
+regression_loss: mae
+branch_aux_weight: 0.0
+
+transformer_d_model: 256
+transformer_nhead: 4
+transformer_nlayers: 2
+transformer_dim_ff: 0
+num_channels: 0

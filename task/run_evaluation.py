@@ -73,15 +73,19 @@ def run_evaluation(args: Namespace, logger: Logger = None) -> List[float]:
     # Initialize scaler  (regression only)
     scaler = None
     if args.dataset_type == 'regression':
-        debug('Fitting scaler')
-        _, train_targets = train_data.smiles(), train_data.targets()
-        scaler = StandardScaler().fit(train_targets)
-        scaled_targets = scaler.transform(train_targets).tolist()
-        train_data.set_targets(scaled_targets)
+        if getattr(args, 'regression_loss', 'mse') == 'beta_nll':
+            debug('Beta NLL: skipping target standardization')
+            scaler = None
+        else:
+            debug('Fitting scaler')
+            _, train_targets = train_data.smiles(), train_data.targets()
+            scaler = StandardScaler().fit(train_targets)
+            scaled_targets = scaler.transform(train_targets).tolist()
+            train_data.set_targets(scaled_targets)
 
-        val_targets = val_data.targets()
-        scaled_val_targets = scaler.transform(val_targets).tolist()
-        val_data.set_targets(scaled_val_targets)
+            val_targets = val_data.targets()
+            scaled_val_targets = scaler.transform(val_targets).tolist()
+            val_data.set_targets(scaled_val_targets)
 
     metric_func = get_metric_func(metric=args.metric)
 
