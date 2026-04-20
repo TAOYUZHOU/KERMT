@@ -1,0 +1,62 @@
+# ============================================================
+#  与 with_features_v1_dirty 训练结构对齐，并在其 checkpoint 上续训 5 epoch
+#
+#  结构要点（与 v1 effective_config 一致）：
+#    - KermtFinetuneTask，**无** solvent_emb_dim（等价 0）→ **21 维原始特征** 与分子向量拼接，**不用** GNN 溶剂投影
+#    - self_attention readout、ffn 700×3、MSE 回归、scaffold_balanced 数据划分
+#  续训：
+#    - checkpoint_path 指向 v1 的 model.pt（非 grover 预训练权重）
+# ============================================================
+
+# --- 路径 ---
+data_path:          tlc/data/train.csv
+separate_val_path:  tlc/data/valid.csv
+separate_test_path: tlc/data/test.csv
+# 从 v1 已训练权重继续（勿与 grover 预训练同时作为唯一入口）
+checkpoint_path:    tlc/results/with_features_v1_dirty/fold_0/model_0/model.pt
+save_dir:           tlc/results/with_features_v1_dirty_finetune5ep
+
+features_path:
+  - tlc/data/train_features.npz
+separate_val_features_path:
+  - tlc/data/valid_features.npz
+separate_test_features_path:
+  - tlc/data/test_features.npz
+
+dataset_type:   regression
+metric:         mae
+split_type:     scaffold_balanced
+num_folds:      1
+ensemble_size:  1
+seed:           42
+
+epochs:         5
+batch_size:     64
+max_lr:         1.0e-4
+init_lr:        1.0e-4
+final_lr:       2.0e-5
+warmup_epochs:  20.0
+weight_decay:   0.0
+dropout:        0.0
+early_stop_epoch: 100
+
+# 显式关闭 GNN 溶剂编码，与 v1 权重结构一致（勿设为正数）
+solvent_emb_dim:  0
+
+ffn_hidden_size:  700
+ffn_num_layers:   3
+activation:       PReLU
+
+self_attention: true
+attn_hidden:    4
+attn_out:       128
+dist_coff:      0.15
+
+bond_drop_rate: 0.1
+no_features_scaling: true
+
+no_cuda: false
+# 物理 GPU 由 CUDA_VISIBLE_DEVICES 选择；此处 cuda:0 即该环境里的第 0 块可见卡
+gpu:     0
+
+no_cache: true

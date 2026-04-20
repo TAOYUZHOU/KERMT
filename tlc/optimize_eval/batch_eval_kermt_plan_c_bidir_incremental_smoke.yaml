@@ -1,0 +1,26 @@
+# Plan C 双向模型 — 全量 PE/EA（leyan + medisilion，三组 target_range）。
+# 与 batch_eval_kermt_plan_c_bidir_pe_ea.yaml 等价，但带 output_prefix，避免覆盖
+# result/<dataset>/tr_* 下已有的「多模型合并」optimization_success_rates_*_wide.csv。
+#
+# Smoke（8 条）请改用：smoke_data/*.xlsx + 单组 target_range + 例如 output_prefix: plan_c_incremental_smoke
+#
+# 后台全量：
+#   cd /root/autodl-tmp/taoyuzhou/c12_TLC_Predictor/optimize_script && nohup /path/to/python batch_run_optimize_and_summarize.py --batch_config /root/autodl-tmp/taoyuzhou/KERMT/tlc/optimize_eval/batch_eval_kermt_plan_c_bidir_incremental_smoke.yaml >> result/logs/plan_c_bidir_full.nohup.log 2>&1 &
+
+python: "/root/autodl-tmp/taoyuzhou/conda_envs/optall/bin/python"
+script_dir: "/root/autodl-tmp/taoyuzhou/c12_TLC_Predictor/optimize_script"
+config_dir: "/root/autodl-tmp/taoyuzhou/KERMT/tlc/optimize_eval/configs"
+datasets:
+  - "/root/autodl-tmp/taoyuzhou/c12_TLC_Predictor/optimize_script/data/leyan_pe_ea.xlsx"
+  - "/root/autodl-tmp/taoyuzhou/c12_TLC_Predictor/optimize_script/data/medisilion_pe_ea.xlsx"
+result_dir: "/root/autodl-tmp/taoyuzhou/c12_TLC_Predictor/optimize_script/result"
+output_prefix: "plan_c_bidir_full"
+target_ranges:
+  - [0.2, 0.4]
+  - [0.3, 0.5]
+  - [0.4, 0.6]
+acceptance_range: "0.2-0.8"
+include_config_regex: "^config_kermt_plan_c_bidir_.*_(leyan|medisilion)_pe_ea\\.ya?ml$"
+max_steps: 5
+continue_on_error: true
+reuse_existing_json: false

@@ -35,8 +35,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 from dataclasses import dataclass
-import cuik_molmaker
 import torch
+
+# --- Lazy cuik_molmaker import (patched by smoke_test.sh) ---
+try:
+    import cuik_molmaker
+    _CUIK_AVAILABLE = True
+except ImportError:
+    _CUIK_AVAILABLE = False
+# --- End lazy import ---
+
 
 
 @dataclass

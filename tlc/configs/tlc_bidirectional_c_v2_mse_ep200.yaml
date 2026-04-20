@@ -1,0 +1,30 @@
+# 方案 C V2（对比实验）：双向结构 + 逐步真值回归，主损失为 MSE；不使用步间单调正则（λ=0）。
+# 与 C v1（Beta NLL + λ_fwd/λ_rev）对照，见 tlc/plan.md。
+
+checkpoint:       pretrained_models/grover_base.pt
+train_seq:        tlc/data/train_sequences.json
+val_seq:          tlc/data/valid_sequences.json
+test_seq:         tlc/data/test_sequences.json
+save_dir:         tlc/results/bidirectional_c_v2_mse_ep200_bs128
+
+epochs:           200
+batch_size:       128
+lr:               1.0e-4
+encoder_lr:       1.0e-5
+weight_decay:     1.0e-5
+seed:             42
+early_stop_epoch: 100
+
+freeze_encoder:   false
+teacher_forcing:  1.0
+
+n_solvents:       5
+desc_dim:         6
+mlp_hidden:       512
+mlp_blocks:       3
+dropout:          0.1
+
+regression_loss:  mse
+lambda_fwd:       0.0
+lambda_rev:       0.0
+eval_refine:      5

@@ -1,0 +1,40 @@
+# C v4 目标 = D2：共享因果 Transformer 双塔 + 固定 K 通道上的多任务 Rf（与 v3 逐步向量目标一致）。
+# num_channels=K：序列轴长度恒为 K（截断/填充 + mask）。0 表示沿用 len(steps) 的可变长度。
+# Smoke：1 epoch，小 batch，data_v2_cleaned。
+# 训练：cd KERMT && python tlc/scripts/train_c_v3_v4.py --config tlc/configs/tlc_c_v4_d2_smoke.yaml
+
+plan: v4_d2
+checkpoint: pretrained_models/grover_base.pt
+# 极小子集，仅用于架构 smoke；全量训练请改回 train_sequences.json / valid_sequences.json
+train_seq: tlc/data/data_v2_cleaned/smoke_train_sequences.json
+val_seq: tlc/data/data_v2_cleaned/smoke_val_sequences.json
+test_seq: tlc/data/data_v2_cleaned/smoke_val_sequences.json
+save_dir: tlc/results/c_v4_d2_transformer_smoke
+
+epochs: 1
+batch_size: 8
+lr: 1.0e-4
+encoder_lr: 1.0e-5
+weight_decay: 1.0e-5
+seed: 42
+early_stop_epoch: 100
+
+freeze_encoder: false
+
+n_solvents: 5
+desc_dim: 6
+mlp_hidden: 512
+mlp_blocks: 3
+dropout: 0.1
+
+regression_loss: mae
+branch_aux_weight: 0.0
+
+# D2 Transformer trunk（dim_ff=0 表示 4*d_model）
+transformer_d_model: 256
+transformer_nhead: 4
+transformer_nlayers: 2
+transformer_dim_ff: 0
+
+# 固定通道数 K（≤ smoke 样本最短步长时可全监督；更长轨迹仅监督前 K 步）
+num_channels: 32

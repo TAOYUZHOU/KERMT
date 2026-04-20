@@ -1,0 +1,22 @@
+# KERMT Plan C（双向）+ PE/EA：leyan / medisilion，多组 target_range；与 batch_eval_kermt_plan_a_v1_tr0p4_0p6.yaml 对齐。
+# Config 位于本仓库 KERMT/tlc/optimize_eval/configs/，与 c12_TLC_Predictor 解耦。
+#
+#   cd /root/autodl-tmp/taoyuzhou/c12_TLC_Predictor/optimize_script
+#   python batch_run_optimize_and_summarize.py --batch_config /root/autodl-tmp/taoyuzhou/KERMT/tlc/optimize_eval/batch_eval_kermt_plan_c_bidir_pe_ea.yaml
+
+python: "/root/autodl-tmp/taoyuzhou/conda_envs/optall/bin/python"
+script_dir: "/root/autodl-tmp/taoyuzhou/c12_TLC_Predictor/optimize_script"
+config_dir: "/root/autodl-tmp/taoyuzhou/KERMT/tlc/optimize_eval/configs"
+datasets:
+  - "/root/autodl-tmp/taoyuzhou/c12_TLC_Predictor/optimize_script/data/leyan_pe_ea.xlsx"
+  - "/root/autodl-tmp/taoyuzhou/c12_TLC_Predictor/optimize_script/data/medisilion_pe_ea.xlsx"
+result_dir: "/root/autodl-tmp/taoyuzhou/c12_TLC_Predictor/optimize_script/result"
+target_ranges:
+  - [0.2, 0.4]
+  - [0.3, 0.5]
+  - [0.4, 0.6]
+acceptance_range: "0.2-0.8"
+include_config_regex: "^config_kermt_plan_c_bidir_.*_(leyan|medisilion)_pe_ea\\.ya?ml$"
+max_steps: 5
+continue_on_error: true
+reuse_existing_json: false

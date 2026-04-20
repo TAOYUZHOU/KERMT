@@ -1,0 +1,64 @@
+# ============================================================
+#  TLC Rf 训练 — GNN 溶剂编码 + 描述符特征
+# ============================================================
+
+# --- 路径 ---
+data_path:          tlc/data/train.csv
+separate_val_path:  tlc/data/valid.csv
+separate_test_path: tlc/data/test.csv
+checkpoint_path:    pretrained_models/grover_base.pt
+save_dir:           tlc/results/with_features_v3_solv_gnn
+
+# --- 额外特征 ---
+features_path:
+  - tlc/data/train_features.npz
+separate_val_features_path:
+  - tlc/data/valid_features.npz
+separate_test_features_path:
+  - tlc/data/test_features.npz
+
+# --- 任务类型 ---
+dataset_type:   regression
+metric:         mae
+split_type:     scaffold_balanced
+num_folds:      1
+ensemble_size:  1
+seed:           42
+
+# --- 训练超参 ---
+epochs:         200
+batch_size:     64
+max_lr:         1.0e-4
+init_lr:        1.0e-4
+final_lr:       2.0e-5
+warmup_epochs:  20.0
+weight_decay:   0.0
+dropout:        0.0
+early_stop_epoch: 20
+
+# --- GNN 溶剂编码 (>0 启用, 实际 dim = mol_dim) ---
+solvent_emb_dim:  1
+n_solvent_dims:   5
+n_cross_dims:     10
+
+# --- 模型结构 ---
+ffn_hidden_size:  700
+ffn_num_layers:   3
+activation:       PReLU
+
+# --- Readout ---
+self_attention: true
+attn_hidden:    4
+attn_out:       128
+dist_coff:      0.15
+
+# --- 正则化 ---
+bond_drop_rate: 0.1
+no_features_scaling: true
+
+# --- 设备 ---
+no_cuda: false
+gpu:     0
+
+# --- 其他 ---
+no_cache: true

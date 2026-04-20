@@ -1,0 +1,25 @@
+# 方案 B v3 重训：300 epoch，早停耐心 100，batch 128（对齐原 autoregressive_v3_solv_gnn 其余超参）
+
+checkpoint:     pretrained_models/grover_base.pt
+train_seq:      tlc/data/train_sequences.json
+val_seq:        tlc/data/valid_sequences.json
+test_seq:       tlc/data/test_sequences.json
+save_dir:       tlc/results/autoregressive_v3_solv_gnn_ep300_es100_bs128
+
+epochs:         300
+batch_size:     128
+lr:             1.0e-4
+encoder_lr:     1.0e-5
+weight_decay:   1.0e-5
+seed:           42
+early_stop_epoch: 100
+
+freeze_encoder: false
+teacher_forcing: 1.0
+
+n_solvents:     5
+desc_dim:       6
+desc_emb_dim:   64
+ffn_hidden:     512
+ffn_blocks:     3
+dropout:        0.1

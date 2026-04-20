@@ -1,0 +1,30 @@
+# 方案 C v1：双向 MLP + 6 维 desc + Beta 头 + 单调正则（Beta NLL + λ_fwd/λ_rev）
+# 评测/parity：python tlc/scripts/eval_and_plot_bidirectional_c.py --model_dir <本 save_dir>
+
+checkpoint:       pretrained_models/grover_base.pt
+train_seq:        tlc/data/train_sequences.json
+val_seq:          tlc/data/valid_sequences.json
+test_seq:         tlc/data/test_sequences.json
+save_dir:         tlc/results/bidirectional_c_v1_ep200_bs128
+
+epochs:           200
+batch_size:       128
+regression_loss:  beta_nll
+lr:               1.0e-4
+encoder_lr:       1.0e-5
+weight_decay:     1.0e-5
+seed:             42
+early_stop_epoch: 100
+
+freeze_encoder:   false
+teacher_forcing:  1.0
+
+n_solvents:       5
+desc_dim:         6
+mlp_hidden:       512
+mlp_blocks:       3
+dropout:          0.1
+
+lambda_fwd:       0.1
+lambda_rev:       0.1
+eval_refine:      5
